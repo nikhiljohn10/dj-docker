@@ -1,0 +1,90 @@
+version: '3'
+
+services:
+  # Database
+  db:
+    hostname: db
+    image: postgres:9.6
+    restart: always
+    env_file: .env
+    volumes:
+      - ./db-data:/var/lib/posrgresql/data
+    networks:
+      - webnet
+
+  # Docker Manager UI
+  portainer:
+    image: portainer/portainer
+    ports:
+      - 9000:9000
+    command: -H unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+
+  # RabbitMQ
+  rabbit:
+    hostname: rabbit
+    image: rabbitmq:3.6-alpine
+    restart: always
+    env_file: .env
+    depends_on:
+      - db
+    networks:
+      - webnet
+
+  # Elastic Search
+  elasticsearch:
+    hostname: elasticsearch
+    image: elasticsearch:5.6-alpine
+    restart: always
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    depends_on:
+      - db
+    networks:
+      - webnet
+
+  # Django  App
+  app:
+    image: python:3.7.1-alpine3.8
+    restart: always
+    command: >
+      apk update && apk add --no-cache  bash \
+                                  postgresql-dev \
+                                  gcc \
+                                  python-dev \
+                                  build-base \
+                                  py-pip \
+                                  jpeg-dev \
+                                  zlib-dev \
+                                  && pip3 install -r requirements.txt
+    command: >
+      find ./scripts/ -type f -iname "*.sh" -exec chmod +x {} \;
+
+    volumes:
+      - ./django/:/srv/code
+      - static:/srv/static
+      - ./media:/srv/media
+
+  # Nginx Server
+  nginx:
+    restart: always
+    image: nginx:1.15.5-alpine
+    ports:
+      - 80:80
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+    depends_on:
+      - app
+    networks:
+      - webnet
+
+networks:
+  webnet:
+    driver: bridge
+
+volumes:
+  static:
+  es-data:
+  portainer_data:
